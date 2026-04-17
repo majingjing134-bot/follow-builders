@@ -682,100 +682,17 @@ async function fetchBlogContent(blogs, state, errors) {
   return results;
 }
 
-// -- Main --------------------------------------------------------------------
-
-async function main() {
-  const args = process.argv.slice(2);
-  const tweetsOnly = args.includes('--tweets-only');
-  const podcastsOnly = args.includes('--podcasts-only');
-  const blogsOnly = args.includes('--blogs-only');
-
-  // If a specific --*-only flag is set, only that feed type runs.
-  // If no flag is set, all three run.
-  const runTweets = tweetsOnly || (!podcastsOnly && !blogsOnly);
-  const runPodcasts = podcastsOnly || (!tweetsOnly && !blogsOnly);
-  const runBlogs = blogsOnly || (!tweetsOnly && !podcastsOnly);
-
-  const xBearerToken = process.env.X_BEARER_TOKEN;
-  const pod2txtKey = process.env.POD2TXT_API_KEY;
-
-  if (runPodcasts && !pod2txtKey) {
-    console.error('POD2TXT_API_KEY not set');
-    process.exit(1);
-  }
-  if (runTweets && !xBearerToken) {
-    console.error('X_BEARER_TOKEN not set');
-    process.exit(1);
-  }
-
-  const sources = await loadSources();
-  const state = await loadState();
-  const errors = [];
-
-  // Fetch tweets
-  if (runTweets) {
-    console.error('Fetching X/Twitter content...');
-    const xContent = await fetchXContent(sources.x_accounts, xBearerToken, state, errors);
-    console.error(`  Found ${xContent.length} builders with new tweets`);
-
-    const totalTweets = xContent.reduce((sum, a) => sum + a.tweets.length, 0);
-    const xFeed = {
-      generatedAt: new Date().toISOString(),
-      lookbackHours: TWEET_LOOKBACK_HOURS,
-      x: xContent,
-      stats: { xBuilders: xContent.length, totalTweets },
-      errors: errors.filter(e => e.startsWith('X API')).length > 0
-        ? errors.filter(e => e.startsWith('X API')) : undefined
-    };
-    await writeFile(join(SCRIPT_DIR, '..', 'feed-x.json'), JSON.stringify(xFeed, null, 2));
-    console.error(`  feed-x.json: ${xContent.length} builders, ${totalTweets} tweets`);
-  }
-
-  // Fetch podcasts
-  if (runPodcasts) {
-    console.error('Fetching podcast content (RSS + pod2txt)...');
-    const podcasts = await fetchPodcastContent(sources.podcasts, pod2txtKey, state, errors);
-    console.error(`  Found ${podcasts.length} new episodes`);
-
-    const podcastFeed = {
-      generatedAt: new Date().toISOString(),
-      lookbackHours: PODCAST_LOOKBACK_HOURS,
-      podcasts,
-      stats: { podcastEpisodes: podcasts.length },
-      errors: errors.filter(e => e.startsWith('Podcast')).length > 0
-        ? errors.filter(e => e.startsWith('Podcast')) : undefined
-    };
-    await writeFile(join(SCRIPT_DIR, '..', 'feed-podcasts.json'), JSON.stringify(podcastFeed, null, 2));
-    console.error(`  feed-podcasts.json: ${podcasts.length} episodes`);
-  }
-
-  // Fetch blog posts
-  if (runBlogs && sources.blogs && sources.blogs.length > 0) {
-    console.error('Fetching blog content...');
-    const blogContent = await fetchBlogContent(sources.blogs, state, errors);
-    console.error(`  Found ${blogContent.length} new blog post(s)`);
-
-    const blogFeed = {
-      generatedAt: new Date().toISOString(),
-      lookbackHours: BLOG_LOOKBACK_HOURS,
-      blogs: blogContent,
-      stats: { blogPosts: blogContent.length },
-      errors: errors.filter(e => e.startsWith('Blog')).length > 0
-        ? errors.filter(e => e.startsWith('Blog')) : undefined
-    };
-    await writeFile(join(SCRIPT_DIR, '..', 'feed-blogs.json'), JSON.stringify(blogFeed, null, 2));
-    console.error(`  feed-blogs.json: ${blogContent.length} posts`);
-  }
-
-  // Save dedup state
-  await saveState(state);
-
-  if (errors.length > 0) {
-    console.error(`  ${errors.length} non-fatal errors`);
+{
+  "name": "follow-builders-scripts",
+  "version": "1.0.0",
+  "description": "Scripts for Follow Builders skill — feed generation, digest preparation, delivery",
+  "type": "module",
+  "scripts": {
+    "generate-feed": "node generate-feed.js",
+    "prepare-digest": "node prepare-digest.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.0",
+    "proper-lockfile": "^4.1.0"
   }
 }
-
-main().catch(err => {
-  console.error('Feed generation failed:', err.message);
-  process.exit(1);
-});
